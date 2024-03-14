@@ -1,0 +1,72 @@
+import requests
+import json
+
+##Ref
+##https://developer.carbonblack.com/reference/carbon-black-cloud/platform/latest/policy-service
+
+##Add your policy IDs
+list_of_policy_ids = [XXXXX,YYYYY]
+
+with open('config.json') as configFile:
+    config = json.load(configFile)
+    apiKey = config['ApiKey']
+    customerID = config['CustomerID']
+    apiKeyX = config['ApiKeyX']
+    customerIDX = config['CustomerIDX']
+    OrgKey = config['OrgKey']
+    URL_CB = config['URL']
+
+#Check if the policies are really the ones you want to update
+print("You will update the following policies...")
+for policy_id in list_of_policy_ids:
+    url = f'https://{URL_CB}/policyservice/v1/orgs/{OrgKey}/policies/{policy_id}'
+
+    headers = {
+        'X-AUTH-TOKEN': f'{apiKey}/{customerID}'
+    }
+
+    response = requests.get(url, headers=headers)
+    if (response.status_code == 200):
+
+        response_data = response.json()
+        print(response_data['name'])
+
+answer = input("Are you sure? Y/N  ")
+if answer.upper() in ["Y", "YES"]:
+
+    print("Atualizando as politicas...")
+    for policy_id in list_of_policy_ids:
+        print("ID: ", policy_id)
+        url = f'https://{URL_CB}/policyservice/v1/orgs/{OrgKey}/policies/{policy_id}/rules'
+
+        ##Change for what you want to add in here, one operation for payload only
+
+        payload = json.dumps({
+            "required": False,
+            "action": "IGNORE",
+            "application": {
+                "type": "NAME_PATH",
+                "value": "C:\\Users\\jessyka\\Documents\\Teste9\\**"
+            },
+            "operation": "BYPASS_ALL"
+        }
+        )
+
+        headers = {
+            'X-AUTH-TOKEN': f'{apiKeyX}/{customerIDX}',
+            'Content-Type': 'application/json'
+        }
+
+
+        try:
+            response = requests.request("POST", url, headers=headers, data=payload)
+            print(response)
+            if response.status_code == 200:
+                print("Updating the policies...")
+                print(response.text)
+        except Exception as exc:
+            print("Exception: ", exc)
+
+elif answer.upper() in ["N", "NO"]:
+    print("Change the IDs")
+    exit()
