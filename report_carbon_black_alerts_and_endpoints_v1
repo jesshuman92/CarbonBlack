@@ -1,0 +1,121 @@
+import requests
+import json
+import time
+from datetime import date
+import csv
+##REF
+##https://developer.carbonblack.com/reference/carbon-black-cloud/platform/latest/policy-service
+
+#Read credentials
+with open('config_cb.json') as configFile:
+    config = json.load(configFile)
+    apiKey = config['ApiKey']
+    customerID = config['CustomerID']
+    OrgKey = config['OrgKey']
+    URL_CB = config['URL']
+
+# #Export Alerts
+print("Starting Alert Export")
+url = f"https://{URL_CB}/api/alerts/v7/orgs/{OrgKey}/alerts/_search"
+
+payload = json.dumps({
+  "time_range": {
+    "range": "-4w"
+  },
+  "criteria": {
+    "minimum_severity": 1
+  },
+  "start": "1",
+  "rows": "10000",
+  "sort": [
+    {
+      "field": "severity",
+      "order": "DESC"
+    }
+  ]
+})
+headers = {
+  'X-AUTH-TOKEN': f'{apiKey}/{customerID}',
+  'Content-Type': 'application/json'
+}
+
+response_alerts = requests.request("POST", url, headers=headers, data=payload)
+
+
+fields = ["device_policy","ttps","attack_tactic","attack_technique", "alert_url", "id", "type", "backend_timestamp", "severity", "reason","reason_code", "threat_id", "device_id",
+           "device_name", "process_name", "process_sha256", "parent_guid","process_cmdline", "process_reputation", "process_effective_reputation", "policy_applied", "run_state","sensor_action", "alert_origin"]
+
+# Open a CSV file for writing
+with open(f'Alerts_{date.today()}.csv', 'w', newline='',encoding='utf-8', errors='ignore') as csvfile:
+    csvwriter = csv.writer(csvfile)
+
+    # Write the header
+    csvwriter.writerow(fields)
+
+    # Write the data rows
+    for result in response_alerts.json()["results"]:
+        row = [result.get(field, '') for field in fields]
+        csvwriter.writerow(row)
+
+print("CSV Alerts created successfully.")
+print("We will now Export Devices List")
+
+##Export Devices
+url = f"https://{URL_CB}/appservices/v6/orgs/{OrgKey}/devices/_export"
+
+payload = json.dumps({
+  # "format": "CSV",
+  "format": "JSON",
+  "rows": 10000,
+  "start": 0,
+  "sort": [
+    {
+      "field": "av_pack_version",
+      "order": "ASC"
+    }
+  ]
+})
+headers = {
+  'X-AUTH-TOKEN': f'{apiKey}/{customerID}',
+  'Content-Type': 'application/json'
+}
+
+response_job_export = requests.request("POST", url, headers=headers, data=payload).json()
+# print(response_endpoints)
+jobId = response_job_export["id"]
+print(jobId)
+print("We are waiting for the job to finish! One moment")
+time.sleep(40)
+
+
+url = f"https://{URL_CB}/jobs/v1/orgs/{OrgKey}/jobs/{jobId}/download"
+
+payload = ""
+headers = {
+  'X-AUTH-TOKEN': f'{apiKey}/{customerID}',
+  'Content-Type': 'application/json'
+}
+
+response_endpoints = requests.request("GET", url, headers=headers, data=payload)
+
+#Specify the CSV file name
+csv_file = f'Endpoints_complete_{date.today()}.csv'
+output_csv = f'Endpoints_filtered.csv'
+
+#Write data to CSV
+print("Writing your endpoints csv file")
+with open(csv_file, 'w', newline='', encoding='utf-8', errors='ignore') as file:
+    file.write(response_endpoints.text)
+
+filter_fields = ["device_id", "ad_org_unit", "ad_domain", "subnet", "av_ave_version", "av_engine", "av_pack_version", "av_product_version", "av_status", "av_vdf_version", "compliance_status", "current_sensor_policy_name", "deployment_type", "email", "name", "asset_group_name", "asset_group_membership_type", "host_based_firewall_status", "os", "os_version", "policy_id", "policy_name", "sensor_states", "sensor_version", "status", "target_priority", "sensor_out_of_date", "sensor_pending_update", "quarantined", "last_reported_time", "last_contact_time"]
+with open(csv_file, 'r', newline='', encoding='utf-8', errors='ignore') as input_file:
+    with open(output_csv, 'w', newline='', encoding='utf-8', errors='ignore') as output_file:
+        reader = csv.DictReader(input_file)
+        writer = csv.DictWriter(output_file, fieldnames=filter_fields)
+        writer.writeheader()
+        for row in reader:
+            filtered_row = {field: row[field] for field in filter_fields}
+            writer.writerow(filtered_row)
+
+
+print("Filtered CSV file created successfully!")
